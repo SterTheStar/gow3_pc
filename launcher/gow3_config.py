@@ -18,6 +18,7 @@ sys.path.insert(0, str(PORT_DIR / 'scripts'))
 sys.path.insert(0, str(PORT_DIR / 'launcher'))
 
 import gow3_launcher_win as core  # noqa: E402  (option tables, no Tkinter at import)
+import gow3_lang as lang  # noqa: E402  (UI language names)
 
 PACKAGED = bool(os.environ.get('GOW3_PREBUILT'))
 if os.environ.get('GOW3_DATA_DIR'):
@@ -60,7 +61,7 @@ def system_language():
         code = (locale.getdefaultlocale()[0] or 'en').split('_')[0].lower()
     except (AttributeError, ValueError):
         return 'en'
-    available = {value for value, _text in core.LANGUAGE_NAMES} - {''}
+    available = {value for value, _text in lang.LANGUAGE_NAMES} - {''}
     return code if code in available else 'en'
 
 

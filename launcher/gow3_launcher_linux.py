@@ -98,7 +98,7 @@ class FolderList:
 class LauncherWindow(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title=f'{cfg.APP_NAME} (PC)')
-        self.set_default_size(800, 860)
+        self.set_default_size(1280, 720)
         self.settings = cfg.load_settings()
         global LANG
         LANG = self.settings.get('ui_language') or cfg.system_language()
@@ -106,6 +106,11 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.process = None
         self.stream = None
         self.mod_order = []
+        self.backup_names = []
+        self.preset_names = []
+        self.combo_lists = {}
+        self.game_rows = []
+        self.game_statuses = []
         self.build()
         self.connect('close-request', self.on_close)
         if self.settings.get('check_updates', False):
@@ -115,45 +120,123 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     def build(self):
         """(Re)creates the window's content in the current launcher language."""
+        self.combo_lists = {}
+        self.game_rows = []
+        self.game_statuses = []
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
-        self.stack = Adw.ViewStack()
-        switcher = Adw.ViewSwitcher(stack=self.stack, policy=Adw.ViewSwitcherPolicy.WIDE)
-        header.set_title_widget(switcher)
+        self.window_title = Adw.WindowTitle(title=cfg.APP_NAME)
+        header.set_title_widget(self.window_title)
         self.launch_button = Gtk.Button()
         self.launch_button.connect('clicked', self.on_launch)
         header.pack_end(self.launch_button)
         toolbar.add_top_bar(header)
 
+        self.stack = Adw.ViewStack()
+        self.stack.set_hexpand(True)
+        self.stack.set_vexpand(True)
         self.toasts = Adw.ToastOverlay()
         self.toasts.set_child(self.stack)
+        self.toasts.set_hexpand(True)
+        self.toasts.set_vexpand(True)
         toolbar.set_content(self.toasts)
-        self.set_content(toolbar)
+
+        # Side tabs, like the Windows launcher: an overlay split view with a navigation
+        # sidebar on the left, collapsible through the header toggle.
+        sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        sidebar.set_size_request(230, -1)
+        scroller = Gtk.ScrolledWindow(vexpand=True, propagate_natural_height=True)
+        self.page_list = Gtk.ListBox()
+        self.page_list.add_css_class('navigation-sidebar')
+        self.page_list.connect('row-selected', self.on_page_selected)
+        scroller.set_child(self.page_list)
+        sidebar.append(scroller)
+        side_note = Gtk.Label(label=_("In the game: Insert or R3+L2\nopens the port's menu."),
+                              wrap=True, xalign=0, margin_start=12, margin_end=12, margin_bottom=12)
+        side_note.add_css_class('dim-label')
+        sidebar.append(side_note)
+
+        split = Adw.OverlaySplitView()
+        split.set_sidebar(sidebar)
+        split.set_content(toolbar)
+        split.set_show_sidebar(True)
+        split.set_collapsed(False)
+        self.set_content(split)
 
         log_text = self.log_view.get_buffer().get_text(
             *self.log_view.get_buffer().get_bounds(), False) if hasattr(self, 'log_view') else ''
-        self.stack.add_titled_with_icon(self.build_home_page(), 'home', _('Home'), 'go-home-symbolic')
-        self.stack.add_titled_with_icon(self.build_display_page(), 'display', _('Display'),
-                                        'video-display-symbolic')
-        self.stack.add_titled_with_icon(self.build_performance_page(), 'performance', _('Performance'),
-                                        'utilities-system-monitor-symbolic')
-        self.stack.add_titled_with_icon(self.build_game_page(), 'game', _('Game'), 'applications-games-symbolic')
-        self.stack.add_titled_with_icon(self.build_patches_page(), 'patches', _('Patches'),
-                                        'document-edit-symbolic')
-        self.stack.add_titled_with_icon(self.build_mods_page(), 'mods', _('Mods'), 'package-x-generic-symbolic')
-        self.stack.add_titled_with_icon(self.build_controls_page(), 'controls', _('Controls'),
-                                        'input-gaming-symbolic')
-        self.stack.add_titled_with_icon(self.build_advanced_page(), 'advanced', _('Advanced'),
-                                        'preferences-system-symbolic')
-        self.stack.add_titled_with_icon(self.build_log_page(), 'log', _('Log'),
-                                        'utilities-terminal-symbolic')
+        self.page_rows = {}
+        for name, title, icon, builder in (
+                ('home', _('Home'), 'go-home-symbolic', self.build_home_page),
+                ('display', _('Display'), 'video-display-symbolic', self.build_display_page),
+                ('performance', _('Performance'), 'utilities-system-monitor-symbolic',
+                 self.build_performance_page),
+                ('game', _('Game'), 'applications-games-symbolic', self.build_game_page),
+                ('patches', _('Patches'), 'document-edit-symbolic', self.build_patches_page),
+                ('mods', _('Mods'), 'package-x-generic-symbolic', self.build_mods_page),
+                ('controls', _('Controls'), 'input-gaming-symbolic', self.build_controls_page),
+                ('advanced', _('Advanced'), 'preferences-system-symbolic', self.build_advanced_page),
+                ('log', _('Log'), 'utilities-terminal-symbolic', self.build_log_page)):
+            self.stack.add_named(builder(), name)
+            row = Adw.ActionRow(title=title)
+            row.add_prefix(Gtk.Image.new_from_icon_name(icon))
+            row.page_name = name
+            self.page_list.append(row)
+            self.page_rows[name] = row
         self.log_view.get_buffer().set_text(log_text)
+        self.show_page(getattr(self, 'current_page', 'home'))
         self.update_launch_button()
         self.update_game_status()
         self.refresh_status_label()
 
+    def show_page(self, name):
+        row = self.page_rows.get(name)
+        if row is not None:
+            self.page_list.select_row(row)
+
+    def on_page_selected(self, _box, row):
+        if row is None:
+            return
+        name = row.page_name
+        self.current_page = name
+        self.stack.set_visible_child_name(name)
+        self.window_title.set_title(row.get_title())
+
     def toast(self, message):
         self.toasts.add_toast(Adw.Toast(title=message))
+
+    # ---- shared rows ------------------------------------------------------------------
+    # A setting shown on two pages (Home quick settings, the game folder row) needs one widget
+    # per page: a widget has a single parent. Synced combos stay on the same value.
+
+    def sync_combo(self, key, title, subtitle, choices, current):
+        row = combo_row(title, subtitle, choices, current)
+        rows = self.combo_lists.setdefault(key, [])
+        rows.append(row)
+        if len(rows) > 1:
+            row.set_selected(rows[0].get_selected())
+        row.connect('notify::selected', lambda r, _p, k=key: self.sync_combos(k, r))
+        return row
+
+    def sync_combos(self, key, source):
+        for row in self.combo_lists.get(key, ()):
+            if row is not source and row.get_selected() != source.get_selected():
+                row.set_selected(source.get_selected())
+
+    def combo_setting(self, key):
+        return combo_value(self.combo_lists[key][0])
+
+    def make_game_row(self):
+        row = Adw.ActionRow(title=_('Game folder'))
+        status = Gtk.Image()
+        row.add_suffix(status)
+        row.add_suffix(flat_button('folder-open-symbolic',
+                                   _('Choose the folder with eboot.bin'), self.on_choose_game))
+        row.add_suffix(flat_button('system-file-manager-symbolic', _('Open'),
+                                   lambda _b: open_folder(self, cfg.game_dir_of(self.settings))))
+        self.game_rows.append(row)
+        self.game_statuses.append(status)
+        return row
 
     def update_launch_button(self):
         running = self.process is not None
@@ -166,32 +249,27 @@ class LauncherWindow(Adw.ApplicationWindow):
     def build_home_page(self):
         page = Adw.PreferencesPage()
         game = Adw.PreferencesGroup(title=_('Game'))
-        self.game_row = Adw.ActionRow(title=_('Game folder'))
-        self.game_status = Gtk.Image()
-        self.game_row.add_suffix(self.game_status)
-        self.game_row.add_suffix(flat_button('folder-open-symbolic',
-                                             _('Choose the folder with eboot.bin'), self.on_choose_game))
-        self.game_row.add_suffix(flat_button('system-file-manager-symbolic', _('Open'),
-                                             lambda _b: open_folder(self, cfg.game_dir_of(self.settings))))
-        game.add(self.game_row)
+        game.add(self.make_game_row())
         self.status_row = Adw.ActionRow(title=_('Ready check'))
         game.add(self.status_row)
         page.add(game)
 
         quick = Adw.PreferencesGroup(title=_('Quick settings'))
-        self.quick_display = combo_row(_('Display mode'), None, cfg.DISPLAY_MODES,
-                                       self.ini.get('display_mode', 'windowed'))
+        self.quick_display = self.sync_combo('display_mode', _('Display mode'), None, cfg.DISPLAY_MODES,
+                                             self.ini.get('display_mode', 'windowed'))
         quick.add(self.quick_display)
-        self.quick_fps = combo_row(_('Frame rate limit'), None, cfg.FPS_LIMITS,
-                                   self.ini.get('fps_limit', '0'))
+        self.quick_fps = self.sync_combo('fps_limit', _('Frame rate limit'), None, cfg.FPS_LIMITS,
+                                         self.ini.get('fps_limit', '0'))
         quick.add(self.quick_fps)
-        self.quick_resolution = combo_row(_('Render resolution'),
-                                          _('The size the game draws at; higher is sharper and slower.'),
-                                          cfg.RESOLUTION_CHOICES, self.ini.get('render_resolution', 'native'))
+        self.quick_resolution = self.sync_combo(
+            'render_resolution', _('Render resolution'),
+            _('The size the game draws at; higher is sharper and slower.'),
+            cfg.RESOLUTION_CHOICES, self.ini.get('render_resolution', 'native'))
         quick.add(self.quick_resolution)
-        self.quick_engine = combo_row(_('Engine frame rate'),
-                                      _('The highest frame rate the game itself runs at (a game patch).'),
-                                      cfg.ENGINE_FPS_CHOICES, self.ini.get('engine_fps', '120'))
+        self.quick_engine = self.sync_combo(
+            'engine_fps', _('Engine frame rate'),
+            _('The highest frame rate the game itself runs at (a game patch).'),
+            cfg.ENGINE_FPS_CHOICES, self.ini.get('engine_fps', '120'))
         quick.add(self.quick_engine)
         page.add(quick)
 
@@ -205,9 +283,10 @@ class LauncherWindow(Adw.ApplicationWindow):
         path = cfg.game_dir_of(self.settings)
         info = cfg.core.game_info(str(path))
         ok = info is not None
-        self.game_row.set_subtitle(
-            f'{path} · {info[0]} · {info[1]}' if ok else _('Game folder not set'))
-        self.game_status.set_from_icon_name('object-select-symbolic' if ok else 'dialog-warning-symbolic')
+        subtitle = (f'{path} · {info[0]} · {info[1]}' if ok else _('Game folder not set'))
+        for row, status in zip(self.game_rows, self.game_statuses):
+            row.set_subtitle(subtitle)
+            status.set_from_icon_name('object-select-symbolic' if ok else 'dialog-warning-symbolic')
         self.launch_button.set_sensitive(ok or self.process is not None)
 
     def refresh_status_label(self):
@@ -231,7 +310,8 @@ class LauncherWindow(Adw.ApplicationWindow):
     def build_display_page(self):
         page = Adw.PreferencesPage()
         window = Adw.PreferencesGroup(title=_('Window'))
-        window.add(self.quick_display)
+        window.add(self.sync_combo('display_mode', _('Display mode'), None, cfg.DISPLAY_MODES,
+                                   self.ini.get('display_mode', 'windowed')))
         self.vsync_row = Adw.SwitchRow(title='VSync',
                                        subtitle=_('Off allows tearing for the lowest latency.'),
                                        active=self.ini.get('vsync', '1') == '1')
@@ -274,14 +354,21 @@ class LauncherWindow(Adw.ApplicationWindow):
     def build_performance_page(self):
         page = Adw.PreferencesPage()
         rate = Adw.PreferencesGroup(title=_('Frame rate'))
-        rate.add(self.quick_fps)
+        rate.add(self.sync_combo('fps_limit', _('Frame rate limit'), None, cfg.FPS_LIMITS,
+                                 self.ini.get('fps_limit', '0')))
         self.frames_queued = combo_row(
             _('Frames ahead of the GPU'),
             _('1 keeps frame pacing even; more can raise FPS when the graphics card is the limit.'),
             cfg.FRAMES_QUEUED, self.ini.get('frames_queued', '1'))
         rate.add(self.frames_queued)
-        rate.add(self.quick_engine)
-        rate.add(self.quick_resolution)
+        rate.add(self.sync_combo(
+            'engine_fps', _('Engine frame rate'),
+            _('The highest frame rate the game itself runs at (a game patch).'),
+            cfg.ENGINE_FPS_CHOICES, self.ini.get('engine_fps', '120')))
+        rate.add(self.sync_combo(
+            'render_resolution', _('Render resolution'),
+            _('The size the game draws at; higher is sharper and slower.'),
+            cfg.RESOLUTION_CHOICES, self.ini.get('render_resolution', 'native')))
         page.add(rate)
 
         shaders = Adw.PreferencesGroup(title=_('Shaders'))
@@ -358,7 +445,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         page.add(cheats)
 
         folders = Adw.PreferencesGroup(title=_('Folders'))
-        folders.add(self.game_row)
+        folders.add(self.make_game_row())
         self.user_row = Adw.ActionRow(title=_('Saves folder'))
         self.user_status = Gtk.Image()
         self.user_row.add_suffix(self.user_status)
@@ -390,8 +477,8 @@ class LauncherWindow(Adw.ApplicationWindow):
                                       self.settings.get('language', '1'))
         language.add(self.language_row)
         self.player_row = Adw.EntryRow(title=_('Player name'),
-                                       subtitle=_('Where the game shows the PSN name; empty: the default.'),
                                        text=str(self.settings.get('player_name', '')))
+        self.player_row.set_tooltip_text(_('Where the game shows the PSN name; empty: the default.'))
         language.add(self.player_row)
         page.add(language)
         return page
@@ -447,17 +534,20 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     def refresh_backups(self):
         names = save_backup.list_backups(cfg.user_dir_of(self.settings))
+        self.backup_names = names
         self.backup_row.set_model(Gtk.StringList.new(names))
-        self.backup_row.set_selected(0 if names else -1)
+        if names:
+            self.backup_row.set_selected(0)
         self.backup_row.set_sensitive(bool(names))
 
     def restore_backup(self):
-        if self.backup_row.get_selected() < 0:
+        index = self.backup_row.get_selected()
+        if not self.backup_names or not 0 <= index < len(self.backup_names):
             return
         if self.process:
             self.toast(_('Close the game before restoring saves.'))
             return
-        name = self.backup_row.get_selected_item().get_string()
+        name = self.backup_names[index]
         try:
             safety = save_backup.restore(cfg.user_dir_of(self.settings), name)
         except (OSError, ValueError) as error:
@@ -612,6 +702,11 @@ class LauncherWindow(Adw.ApplicationWindow):
         group.add(self.mods_folder_row)
         self.mod_list = FolderList(group)
         page.add(group)
+
+        self.conflict_row = Adw.ActionRow(title=_('Conflicts'))
+        found_group = Adw.PreferencesGroup()
+        found_group.add(self.conflict_row)
+        page.add(found_group)
         self.refresh_mods()
 
         presets = Adw.PreferencesGroup(title=_('Preset'))
@@ -625,10 +720,6 @@ class LauncherWindow(Adw.ApplicationWindow):
         page.add(presets)
         self.refresh_presets()
 
-        self.conflict_row = Adw.ActionRow(title=_('Conflicts'))
-        found_group = Adw.PreferencesGroup()
-        found_group.add(self.conflict_row)
-        page.add(found_group)
         return page
 
     def mods_dir(self):
@@ -702,9 +793,12 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     def refresh_presets(self, keep=''):
         presets = self.load_presets()
-        self.preset_row.set_model(Gtk.StringList.new(sorted(presets)))
         names = sorted(presets)
-        self.preset_row.set_selected(names.index(keep) if keep in names else -1)
+        self.preset_names = names
+        self.preset_row.set_model(Gtk.StringList.new(names))
+        if keep in names:
+            self.preset_row.set_selected(names.index(keep))
+        self.preset_row.set_sensitive(bool(names))
 
     def save_mod_preset(self):
         name = self.preset_row.get_selected_item()
@@ -719,9 +813,10 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.refresh_presets(name)
 
     def load_mod_preset(self):
-        if self.preset_row.get_selected() < 0:
+        index = self.preset_row.get_selected()
+        if not self.preset_names or not 0 <= index < len(self.preset_names):
             return
-        name = self.preset_row.get_selected_item().get_string()
+        name = self.preset_names[index]
         preset = self.load_presets().get(name)
         if not isinstance(preset, dict):
             return
@@ -738,9 +833,10 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.refresh_presets(name)
 
     def delete_mod_preset(self):
-        if self.preset_row.get_selected() < 0:
+        index = self.preset_row.get_selected()
+        if not self.preset_names or not 0 <= index < len(self.preset_names):
             return
-        name = self.preset_row.get_selected_item().get_string()
+        name = self.preset_names[index]
         presets = self.load_presets()
         if presets.pop(name, None) is not None:
             cfg.MOD_PRESETS.write_text(json.dumps(presets, indent=2), encoding='utf-8')
@@ -828,7 +924,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         launcher = Adw.PreferencesGroup(title=_('Launcher'))
         self.ui_language_row = combo_row(_('Launcher language'),
                                          _('Applies when the launcher opens again.'),
-                                         cfg.core.LANGUAGE_NAMES,
+                                         gow3_lang.LANGUAGE_NAMES,
                                          self.settings.get('ui_language', ''))
         self.ui_language_row.connect('notify::selected', self.on_ui_language)
         launcher.add(self.ui_language_row)
@@ -884,8 +980,8 @@ class LauncherWindow(Adw.ApplicationWindow):
             active=bool(self.settings.get('vk_validation', False)))
         dev.add(self.validation_row)
         self.extra_row = Adw.EntryRow(title=_('Extra variables'),
-                                      subtitle=_('NAME=value pairs separated by spaces (README lists them).'),
                                       text=str(self.settings.get('extra_env', '')))
+        self.extra_row.set_tooltip_text(_('NAME=value pairs separated by spaces (README lists them).'))
         dev.add(self.extra_row)
         page.add(dev)
         return page
@@ -1010,10 +1106,10 @@ class LauncherWindow(Adw.ApplicationWindow):
         cfg.save_settings(s)
         ini = dict(self.ini)
         ini.update({
-            'display_mode': combo_value(self.quick_display),
-            'fps_limit': combo_value(self.quick_fps),
-            'render_resolution': combo_value(self.quick_resolution),
-            'engine_fps': combo_value(self.quick_engine),
+            'display_mode': self.combo_setting('display_mode'),
+            'fps_limit': self.combo_setting('fps_limit'),
+            'render_resolution': self.combo_setting('render_resolution'),
+            'engine_fps': self.combo_setting('engine_fps'),
             'vsync': '1' if self.vsync_row.get_active() else '0',
             'fsr1': '1' if self.fsr1_row.get_active() else '0',
             'rcas': '1' if self.rcas_row.get_active() else '0',
