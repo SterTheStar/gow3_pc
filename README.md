@@ -2,7 +2,8 @@
 
 **English** | [Português (Brasil)](README.pt-BR.md)
 
-A PC port of **God of War III Remastered** (PlayStation 4) for Windows 10 and 11.
+A PC port of **God of War III Remastered** (PlayStation 4) for Windows 10 and 11 and for
+Linux (x86-64).
 
 The CPU side is native: the game's original executable runs directly on the PC's processor (the
 PS4 uses the same x86-64 architecture), and a runtime written for this game replaces the PS4
@@ -61,7 +62,8 @@ Progress is tracked (in Portuguese) in [docs/gow3/ROADMAP.md](docs/gow3/ROADMAP.
 ## Download and play
 
 **You need**
-- Windows 10 (1903 or newer) or Windows 11, 64-bit.
+- Windows 10 (1903 or newer) or Windows 11, 64-bit — or Linux x86-64 (tested on Ubuntu and
+  Steam Deck; see [Building from source](#building-from-source)).
 - A graphics card with Vulkan 1.3 and an up-to-date driver.
 - Your own copy of God of War III Remastered: **CUSA01623 with the 01.02 update**, as a folder
   that contains `eboot.bin`, `sce_module` and `sce_sys`. No game files are included in this
@@ -105,7 +107,7 @@ Patches and fixes are included and applied automatically: texture fix, skip vide
 
 ## Requirements
 
-- Windows 10 (1903 or newer) or Windows 11, 64-bit.
+- Windows 10 (1903 or newer) or Windows 11, 64-bit — or Linux x86-64.
 - A graphics card with Vulkan 1.3 and a current driver.
 - Your copy of the game: CUSA01623 with the 01.02 update applied (the folder with `eboot.bin`,
   `sce_module` and `sce_sys`).
@@ -114,11 +116,14 @@ Patches and fixes are included and applied automatically: texture fix, skip vide
   hooks (cheats, multipliers, health bar) only where the code they change has the expected
   bytes. Otherwise the game starts without them, and the log and the menu say why.
 - To build from source: [MSYS2](https://www.msys2.org) and [Python 3](https://www.python.org) with Pillow
-  (`pip install pillow`, used for the game's icon and cover art).
+  (`pip install pillow`, used for the game's icon and cover art) on Windows; on Linux the
+  packages in [shell.nix](shell.nix) (or Nix, see below).
 
 ## Building from source
 
 Development happens on the `gow3` branch; `main` receives tested merges.
+
+### Windows
 
 1. Install MSYS2 (`winget install MSYS2.MSYS2`) and, in the **MSYS2 CLANG64** shell, the
    packages listed in [packaging/windows/README.md](packaging/windows/README.md).
@@ -153,9 +158,56 @@ $env:GOW3_GAME_DIR = 'D:\path\CUSA01623'
 python run.py
 ```
 
-Settings are kept in `gow3.ini` (the game and the in-game menu) and in
-`%APPDATA%\gow3-launcher\settings.json` (the launcher). Saves, the shader cache and
-`last_run.log` go to the project's `user` folder.
+### Linux
+
+The same sources build on Linux (x86-64): `bash build.sh` produces `out/gow3-probe` with
+`out/gpu/libgow3gpu.so`, and `bash run.sh` prepares the game image and starts it. The Linux
+launcher (`launcher/gow3_launcher_linux.py`, GTK4/libadwaita) has the same pages as the Windows one;
+`bash packaging/appimage.sh` bundles everything into `dist/gow3-x86_64.AppImage` (Steam Deck).
+
+1. Easiest: install [Nix](https://nixos.org/download/) and let the scripts enter the pinned
+   environment themselves (`shell.nix`):
+
+   ```bash
+   git clone --recursive https://github.com/FelipePrado0/gow3_pc
+   cd gow3_pc
+   git checkout gow3   # the newest work; skip it to build main
+   bash build.sh       # enters nix-shell automatically when needed
+   ```
+
+   Without Nix, install the system counterparts of [shell.nix](shell.nix) (GCC, CMake, Ninja,
+   pkg-config, Python 3 with Pillow, Vulkan loader/headers, SDL3, FFmpeg, Boost, fmt,
+   robin-map, xxhash, VulkanMemoryAllocator, glslang, spirv-cross, xbyak, zydis, spirv-headers,
+   miniz, X11/Wayland headers — plus GTK4, libadwaita and PyGObject for the launcher), e.g. on
+   recent Ubuntu/Debian/Arch. SDL3 in particular may be too new for your distribution; when in
+   doubt, use Nix.
+
+2. Start the launcher (in the project folder):
+
+   ```bash
+   launcher/gow3-launcher.sh
+   ```
+
+   It uses the system Python when PyGObject/GTK4/libadwaita are installed, else nix-shell.
+   On **Game**, choose the game folder, adjust the other pages if you like, then press **PLAY**.
+
+To play with the saved settings without the launcher's window (for a shortcut or Steam game
+mode):
+
+```bash
+launcher/gow3-launcher.sh --play
+```
+
+Or without the launcher at all:
+
+```bash
+GOW3_GAME_DIR=/path/CUSA01623 bash run.sh
+```
+
+Settings are kept in `gow3.ini` (the game and the in-game menu) and in the launcher's
+`settings.json` (`%APPDATA%\gow3-launcher` on Windows, `~/.config/gow3-launcher` on Linux).
+Saves, the shader cache and `last_run.log` go to the project's `user` folder — on Linux, or
+`~/.local/share/gow3/user` for the AppImage.
 
 On **Performance → GPU data → Stream buffer memory**, choose **System RAM (cached, default)**,
 **System RAM (uncached)** or **GPU memory (previous behavior)**. System RAM can improve frame
@@ -218,7 +270,7 @@ out/gow3-probe.exe out/boot-linked.bin --app0 <game folder> --check-imports
 | GPU | `gpu/shadps4/` | The shadPS4 video core, translating the PS4 GPU commands and shaders to Vulkan, with cuesta4's God of War III fixes (`eltutz` branch) and this port's speed work (background shader cache, deferred readbacks) |
 | In-game menu | `gpu/shim/gow3_overlay.cpp` | The Dear ImGui menu and performance overlay; settings in `gpu/shim/gow3_settings.cpp` |
 | Patches | `patches/God_of_War_III_Remastered.xml`, `scripts/patches.py` | Applied in memory at start, without changing the game files |
-| Launcher | `launcher/gow3_launcher_win.py` | Settings, patches, mods, controls and the play button |
+| Launcher | `launcher/gow3_launcher_win.py` (Windows), `launcher/gow3_launcher_linux.py` (Linux) | Settings, patches, mods, controls and the play button |
 
 More documentation: [mods](docs/MODS.md), [frame map and upscaler](docs/upscaler.md),
 [parallel GPU work](docs/parallel_gpu.md) and the [roadmap](docs/gow3/ROADMAP.md).

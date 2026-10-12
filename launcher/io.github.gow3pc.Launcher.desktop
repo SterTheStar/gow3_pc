@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=God of War III (PC)
+Comment=Native PC port launcher for God of War III Remastered
+Exec=gow3
+Icon=gow3
+Terminal=false
+Type=Application
+Categories=Game;
+StartupWMClass=io.github.gow3pc.Launcher

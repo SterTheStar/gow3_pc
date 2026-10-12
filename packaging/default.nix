@@ -106,14 +106,20 @@ pkgs.stdenv.mkDerivation {
     mkdir -p $out/libexec
     gcc -O2 -Wall -Werror -static -L${pkgs.glibc.static}/lib -DTARGET="\"$out/libexec/gow3\"" \
       ${./gow3-entry.c} -o $out/bin/gow3
-    # The game (settings from the data directory's gow3.ini).
+    # The launcher (its --play starts the game with the saved settings, no window).
+    # gow3_vulkan.py runs first so the host NVIDIA driver is set up for both.
     makeShellWrapper ${pkgs.python3}/bin/python3 $out/libexec/gow3 \
-      ${common}      --add-flags "$out/share/gow3/launcher/gow3_vulkan.py ${pkgs.bash}/bin/bash $out/share/gow3/run.sh" \
+      ${common}      --add-flags "$out/share/gow3/launcher/gow3_vulkan.py ${pkgs.python3}/bin/python3 $out/share/gow3/launcher/gow3_launcher_linux.py" \
       --set GOW3_PREBUILT 1 \
       --set PYTHON ${pkgs.python3}/bin/python3 \
       --set GOW3_BUNDLED_VK_DRIVER_FILES ${icds} \
       --prefix PATH : ${lib.makeBinPath [ pkgs.bash pkgs.coreutils ]} \
       --run 'export GOW3_DATA_DIR=''${GOW3_DATA_DIR:-''${XDG_DATA_HOME:-$HOME/.local/share}/gow3}; mkdir -p "$GOW3_DATA_DIR"'
+    # Desktop entry and icon for the AppImage and `nix-env -i`.
+    mkdir -p $out/share/applications $out/share/icons/hicolor/256x256/apps
+    substitute $out/share/gow3/launcher/io.github.gow3pc.Launcher.desktop $out/share/applications/io.github.gow3pc.Launcher.desktop \
+      --replace 'Exec=gow3' 'Exec=gow3' --replace 'Icon=gow3' 'Icon=io.github.gow3pc.Launcher'
+    cp $out/share/gow3/launcher/gow3.png $out/share/icons/hicolor/256x256/apps/io.github.gow3pc.Launcher.png
   '';
   meta.mainProgram = "gow3";
 }
