@@ -1272,7 +1272,10 @@ class LauncherWindow(Adw.ApplicationWindow):
         try:
             if made := save_backup.backup(user_dir):
                 print(f'Saves backed up to {made}', flush=True)
+            # run.sh backs up too, unless told the saves are already safe.
+            os.environ['GOW3_SAVE_BACKED_UP'] = '1'
         except OSError as error:
+            os.environ.pop('GOW3_SAVE_BACKED_UP', None)
             print(f'Save backup failed, starting anyway: {error}', flush=True)
         # The window icon for the game (SDL loads BMP without extra libraries).
         out = cfg.DATA_DIR / 'out'
@@ -1388,7 +1391,10 @@ def play():
     user_dir.mkdir(parents=True, exist_ok=True)
     try:
         save_backup.backup(user_dir)
+        # run.sh backs up too, unless told the saves are already safe.
+        os.environ['GOW3_SAVE_BACKED_UP'] = '1'
     except OSError as error:
+        os.environ.pop('GOW3_SAVE_BACKED_UP', None)
         print(f'Save backup failed, starting anyway: {error}', flush=True)
     os.chdir(cfg.PORT_DIR)
     os.execvpe('bash', ['bash', str(cfg.PORT_DIR / 'run.sh')], cfg.game_environment(settings, ini))

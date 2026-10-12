@@ -40,6 +40,30 @@ if [[ -z ${PYTHON:-} ]]; then echo 'Install Python 3 or set PYTHON.' >&2; exit 1
 game=${GOW3_GAME_DIR:-../CUSA01623}
 if [[ ! -f $game/eboot.bin ]]; then echo "No eboot.bin in $game (set GOW3_GAME_DIR)." >&2; exit 1; fi
 original_game=$game
+# Saves are backed up before every start (the launcher sets GOW3_SAVE_BACKED_UP when it
+# already did, so a launcher start backs up once, not twice).
+user=${GOW3_USER_DIR:-$data/user}
+mkdir -p "$user"
+if [[ -z ${GOW3_SAVE_BACKED_UP:-} ]]; then
+    if made=$("$PYTHON" -c 'import sys; sys.path.insert(0, "scripts"); from pathlib import Path
+from save_backup import backup
+made = backup(Path(sys.argv[1]))
+print(made if made else "")' "$user"); then
+        [[ -n $made ]] && echo "Saves backed up to $made"
+    else
+        echo 'Save backup failed, starting anyway.' >&2
+    fi
+fi
+# The window icon for the game (SDL loads BMP without extra libraries); the launcher
+# sets GOW3_WINDOW_ICON itself when Pillow is available.
+if [[ -z ${GOW3_WINDOW_ICON:-} ]]; then
+    if "$PYTHON" -c 'import sys; from PIL import Image
+with Image.open(sys.argv[1]) as image:
+    image.convert("RGBA").resize((64, 64), Image.LANCZOS).save(sys.argv[2])' \
+        "$original_game/sce_sys/icon0.png" "$out/window_icon.bmp" 2>/dev/null; then
+        export GOW3_WINDOW_ICON=$out/window_icon.bmp
+    fi
+fi
 game=$("$PYTHON" scripts/mods.py "$game" --out "$out" \
     --mods-dir "${GOW3_MODS_DIR:-$data/mods}" --config "${GOW3_MODS_CONFIG:-$data/mods.json}" \
     --enabled "${GOW3_MODS_ENABLED:-1}")
@@ -52,9 +76,15 @@ fi
 "$PYTHON" scripts/link_libc.py "$game" --out "$out"
 "$PYTHON" scripts/link_modules.py "$game" --out "$out"
 "$PYTHON" scripts/content_profile.py "$game" --out "$out" --sku "${GOW3_CONTENT_SKU:-full}"
+# Per-start graphics derivation (gow3.ini options, restart confirmation, patch selection,
+# engine frame rate), like run.py. On top of the launcher's own derivation it is a no-op.
+eval "$("$PYTHON" scripts/derive_env.py --game-dir "$game" --out "$out")"
 # GOW3_PATCHES adds patch names ("a;b") to the game's built-in patch file.
 "$PYTHON" scripts/patches.py --out "$out" --extra "${GOW3_PATCHES:-}" --game-dir "$game"     --patches-dir "${GOW3_PATCHES_DIR:-$data/patches}" --patches-config "${GOW3_PATCHES_CONFIG:-$data/patches.json}"
 export GOW3_VBLANK_HZ=${GOW3_VBLANK_HZ:-60}
+# In-game restart re-execs this script from the port directory (probe.c); the overlay
+# also reads this as its restart-available flag (run.py sets a command line on Windows).
+export GOW3_RESTART_COMMAND="bash run.sh"
 # FSR 4: faster post passes next to the downloaded ones (incremental; tools/fsr4_optimize.sh).
 if [[ -z ${GOW3_PREBUILT:-} && -d fsr4_shaders ]] && command -v spirv-cross >/dev/null; then
     bash tools/fsr4_optimize.sh || echo 'FSR 4: optimized post passes not built' >&2
