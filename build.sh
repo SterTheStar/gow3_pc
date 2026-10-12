@@ -49,9 +49,18 @@ read -r -a libraries <<< "$(pkg-config --libs vulkan sdl3 libavcodec libavutil l
 # GPU library (shadPS4 video core + drivers), built by CMake into out/gpu/libgow3gpu.so.
 # GOW3_PGO: generate (instrumented build that writes pgo/ while the game runs), use, off.
 # Default: use the profile in pgo/ when there is one. GOW3_LTO=OFF disables link-time optimization.
+# When GOW3_LTO is unset, the value already configured in out/gpu/CMakeCache.txt is reused,
+# so a manual GOW3_LTO=OFF build followed by a plain press-play does not flip back to ON
+# and rebuild the whole GPU library every time. Pass GOW3_LTO explicitly once to switch modes.
 # GOW3_JOBS=N limits ninja parallelism (default: all cores). Low-memory machines want
 # GOW3_JOBS=4 (or less) together with GOW3_LTO=OFF: the default LTO link alone needs
 # several GB and each compiler job adds ~0.5-1 GB on top.
+if [[ -z ${GOW3_LTO:-} && -f out/gpu/CMakeCache.txt ]]; then
+    cached_lto=$(sed -n 's/^GOW3_LTO:BOOL=//p' out/gpu/CMakeCache.txt)
+    if [[ $cached_lto == ON || $cached_lto == OFF ]]; then
+        GOW3_LTO=$cached_lto
+    fi
+fi
 ninja_jobs=()
 if [[ -n ${GOW3_JOBS:-} ]]; then
     ninja_jobs=(-j "$GOW3_JOBS")
