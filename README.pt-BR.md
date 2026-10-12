@@ -211,6 +211,13 @@ launcher (`%APPDATA%\gow3-launcher` no Windows, `~/.config/gow3-launcher` no Lin
 cache de shaders e `last_run.log` ficam na pasta `user` do projeto — no Linux, ou
 `~/.local/share/gow3/user` no AppImage.
 
+Em **Performance → GPU data → Stream buffer memory**, escolha **System RAM (cached, default)**,
+**System RAM (uncached)** ou **GPU memory (previous behavior)**. A RAM do sistema pode melhorar o
+FPS em notebooks com placa de vídeo NVIDIA. A escolha é salva e vale na próxima partida,
+inclusive pelo `Play God of War III.exe` ou pelo `--play`. Escolha **GPU memory** para voltar à
+alocação anterior. Sem o launcher, `GOW3_STREAM_MEMORY` aceita `cached`, `host` ou `device`; com
+o launcher, a escolha salva nele tem prioridade.
+
 ### Teclado
 
 Padrão; mude na tela **Controls** do launcher.
@@ -228,8 +235,13 @@ Padrão; mude na tela **Controls** do launcher.
 | Z e C | L3 e R3 |
 | I, K, J, L | direcional |
 | Enter | Options |
-| Tab | touchpad |
+| Tab | clique esquerdo do touchpad (modo foto) |
+| Backspace | clique direito do touchpad (menu de pausa) |
 | Insert | menu do port (R3+L2 no controle) |
+
+Em um controle sem touchpad (Xbox e outros), View abre o menu de pausa (o clique direito do
+touchpad) e L1 + View abre o modo foto (o clique esquerdo). No DualSense o touchpad funciona
+como no PS4, e Share/Create funciona como View.
 
 No menu: L1/R1 ou Q/E trocam de aba. Na lista de saves: setas ou direcional escolhem, Enter ou
 Xis confirmam, Esc ou Círculo cancelam.
