@@ -444,6 +444,13 @@ class LauncherWindow(Adw.ApplicationWindow):
         page.add(shaders)
 
         data = Adw.PreferencesGroup(title=_('GPU data'))
+        gpus = [('', (_('Automatic'),))] + [(index, (name,))
+                                            for index, name, _kind in cfg.list_gpus()]
+        self.gpu_row = combo_row(
+            _('Graphics card'),
+            _('The GPU the game runs on. Choose your dedicated card if the game uses the integrated one.'),
+            gpus, self.settings.get('gpu_id', ''))
+        data.add(self.gpu_row)
         self.stream_row = combo_row(
             _('Stream buffer memory'),
             _('System RAM can improve FPS on NVIDIA laptops. Choose GPU memory to restore the previous '
@@ -1202,6 +1209,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         s['language'] = combo_value(self.language_row)
         s['player_name'] = self.player_row.get_text().strip()
         s['hdr'] = self.hdr_row.get_active()
+        s['gpu_id'] = combo_value(self.gpu_row)
         s['draw_pipe'] = combo_value(self.draw_pipe_row)
         s['readbacks'] = combo_value(self.readbacks_row)
         s['stream_memory'] = combo_value(self.stream_row)

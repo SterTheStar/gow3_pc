@@ -121,6 +121,19 @@ def game_dir_of(settings):
     return Path(settings.get('game_dir') or APP_DEFAULTS['game_dir']).expanduser()
 
 
+def list_gpus():
+    """The Vulkan GPUs in the order the game numbers them, or [] when the tool cannot tell."""
+    import subprocess
+    tool = core.find_tool('gow3-gpu-capabilities')
+    if not tool:
+        return []
+    try:
+        done = subprocess.run([tool, '--list'], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return core.parse_gpu_list(done.stdout) if done.returncode == 0 else []
+
+
 def user_dir_of(settings):
     custom = settings.get('user_dir')
     return Path(custom).expanduser() if custom else DATA_DIR / 'user'
@@ -190,6 +203,10 @@ def game_environment(settings, ini):
     for key, name in (('draw_pipe', 'GOW3_DRAW_PIPE'), ('readbacks', 'GOW3_READBACKS')):
         if settings.get(key):
             env[name] = settings[key]
+    gpu_id = str(settings.get('gpu_id', ''))
+    env.pop('GOW3_GPU_ID', None)
+    if gpu_id.isdigit():
+        env['GOW3_GPU_ID'] = gpu_id
     stream_memory = settings.get('stream_memory', APP_DEFAULTS['stream_memory'])
     env['GOW3_STREAM_MEMORY'] = stream_memory if stream_memory in ('cached', 'host', 'device') else 'cached'
     env['GOW3_BACKGROUND_WARMUP'] = '1' if settings.get('background_warmup', True) else '0'

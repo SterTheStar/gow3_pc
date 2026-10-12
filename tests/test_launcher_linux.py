@@ -68,6 +68,14 @@ class LinuxConfigTest(unittest.TestCase):
         self.assertEqual(env['GOW3_VBLANK_HZ'], '60')
         self.assertNotIn('GOW3_KEY_MAP', env)
         self.assertNotIn('GOW3_PAD_MAP', env)
+        self.assertNotIn('GOW3_GPU_ID', env)
+
+    def test_environment_gpu_id(self):
+        settings = {**cfg.APP_DEFAULTS, 'game_dir': '/games/CUSA01623', 'user_dir': ''}
+        self.assertNotIn('GOW3_GPU_ID', cfg.game_environment(settings, dict(cfg.INI_DEFAULTS)))
+        settings['gpu_id'] = '1'
+        self.assertEqual(
+            cfg.game_environment(settings, dict(cfg.INI_DEFAULTS))['GOW3_GPU_ID'], '1')
 
     def test_environment_control_maps_and_overrides(self):
         settings = {**cfg.APP_DEFAULTS, 'game_dir': '/games/CUSA01623',
