@@ -30,7 +30,7 @@ import gi  # noqa: E402
 
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 sys.path.insert(0, str(cfg.PORT_DIR / 'launcher'))
 import gow3_lang  # noqa: E402
@@ -113,7 +113,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.game_statuses = []
         self.build()
         self.connect('close-request', self.on_close)
-        if self.settings.get('check_updates', False):
+        if self.settings.get('check_updates', True):
             Gio.Task.run_in_thread(lambda *_: self.check_update())
 
     # ---- layout ---------------------------------------------------------------------
@@ -247,12 +247,17 @@ class LauncherWindow(Adw.ApplicationWindow):
     # ---- home -----------------------------------------------------------------------
 
     def build_home_page(self):
-        page = Adw.PreferencesPage()
+        # A scrolling box (not a PreferencesPage: the banner is not a group).
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
+                      margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
+        self.banner_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.append(self.banner_box)
+        self.refresh_banner()
         game = Adw.PreferencesGroup(title=_('Game'))
         game.add(self.make_game_row())
         self.status_row = Adw.ActionRow(title=_('Ready check'))
         game.add(self.status_row)
-        page.add(game)
+        box.append(game)
 
         quick = Adw.PreferencesGroup(title=_('Quick settings'))
         self.quick_display = self.sync_combo('display_mode', _('Display mode'), None, cfg.DISPLAY_MODES,
@@ -271,13 +276,49 @@ class LauncherWindow(Adw.ApplicationWindow):
             _('The highest frame rate the game itself runs at (a game patch).'),
             cfg.ENGINE_FPS_CHOICES, self.ini.get('engine_fps', '120'))
         quick.add(self.quick_engine)
-        page.add(quick)
+        box.append(quick)
 
         hint = Adw.PreferencesGroup()
         hint.add(Adw.ActionRow(title=_("In the game: Insert or R3+L2\nopens the port's menu."),
                                subtitle=_('Cheats, image, performance and the performance overlay.')))
-        page.add(hint)
-        return page
+        box.append(hint)
+        scroller = Gtk.ScrolledWindow(hexpand=True, vexpand=True, propagate_natural_height=True)
+        scroller.set_child(box)
+        return scroller
+
+    def refresh_banner(self):
+        """The cover art of the selected dump (sce_sys/pic1.png) under the title."""
+        if not hasattr(self, 'banner_box'):
+            return
+        while child := self.banner_box.get_first_child():
+            self.banner_box.remove(child)
+        folder = cfg.game_dir_of(self.settings)
+        art = folder / 'sce_sys' / 'pic1.png'
+        info = cfg.core.game_info(str(folder))
+        if art.is_file():
+            pic = Gtk.Picture.new_for_filename(str(art))
+            pic.set_content_fit(Gtk.ContentFit.COVER)
+            pic.set_size_request(-1, 300)
+            pic.set_can_shrink(True)
+            overlay = Gtk.Overlay()
+            overlay.set_child(pic)
+            labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.END,
+                             halign=Gtk.Align.FILL, margin_start=16, margin_end=16, margin_bottom=12)
+            title = Gtk.Label(xalign=0)
+            title.set_markup(f'<span size="24000" weight="bold">{GLib.markup_escape_text(info[0] if info else cfg.APP_NAME)}</span>')
+            labels.append(title)
+            if info:
+                title_id, _profile = cfg.core.game_profile_of(str(folder))
+                sub = Gtk.Label(xalign=0, label=f'{title_id or "?"} · {info[1]}')
+                sub.add_css_class('dim-label')
+                labels.append(sub)
+            overlay.add_overlay(labels)
+            self.banner_box.append(overlay)
+        else:
+            prompt = Adw.ActionRow(title=_('Choose your game folder to play.'))
+            prompt.add_suffix(flat_button('folder-open-symbolic', _('Choose the game folder'),
+                                          lambda _b: self.show_page('game')))
+            self.banner_box.append(prompt)
 
     def update_game_status(self):
         path = cfg.game_dir_of(self.settings)
@@ -288,6 +329,7 @@ class LauncherWindow(Adw.ApplicationWindow):
             row.set_subtitle(subtitle)
             status.set_from_icon_name('object-select-symbolic' if ok else 'dialog-warning-symbolic')
         self.launch_button.set_sensitive(ok or self.process is not None)
+        self.refresh_banner()
 
     def refresh_status_label(self):
         path = cfg.game_dir_of(self.settings)
@@ -948,7 +990,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         for title, path in ((_('Port folder'), cfg.DATA_DIR), ('gow3.ini', cfg.ini_path())):
             row = Adw.ActionRow(title=title, subtitle=str(path))
             row.add_suffix(flat_button('system-file-manager-symbolic', _('Open'),
-                                       lambda _b, p=path: open_folder(self, p)))
+                                       lambda _b, p=path: self.open_path(p)))
             files.add(row)
         cache = Adw.ActionRow(
             title=_('Clear shader cache'),
@@ -1028,6 +1070,16 @@ class LauncherWindow(Adw.ApplicationWindow):
             return
         self.toast(_('Shortcut created on the desktop.'))
 
+    def open_path(self, path):
+        """Opens a file or folder; gow3.ini is saved first so it shows the current values."""
+        path = Path(path)
+        if path.suffix == '.ini':
+            try:
+                self.store()
+            except Exception:
+                pass
+        open_folder(self, path)
+
     # ---- updates ---------------------------------------------------------------------------
 
     def check_update(self, manual=False):
@@ -1051,15 +1103,32 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     def build_log_page(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6,
+                      margin_top=8, margin_start=8, margin_end=8)
+        spacer = Gtk.Box(hexpand=True)
+        bar.append(spacer)
+        bar.append(flat_button('edit-copy-symbolic', _('Copy'), lambda _b: self.copy_log()))
+        bar.append(flat_button('edit-clear-symbolic', _('Clear'), lambda _b: self.clear_log()))
+        box.append(bar)
         self.log_view = Gtk.TextView(editable=False, monospace=True, cursor_visible=False,
                                      wrap_mode=Gtk.WrapMode.WORD_CHAR)
         self.log_view.set_top_margin(8)
         self.log_view.set_left_margin(8)
         self.log_view.set_right_margin(8)
-        scroller = Gtk.ScrolledWindow(vexpand=True, child=self.log_view)
+        scroller = Gtk.ScrolledWindow(vexpand=True, hexpand=True, child=self.log_view)
         self.log_scroller = scroller
         box.append(scroller)
         return box
+
+    def copy_log(self):
+        buffer = self.log_view.get_buffer()
+        text = buffer.get_text(*buffer.get_bounds(), False)
+        display = Gdk.Display.get_default()
+        if display is not None:
+            display.get_clipboard().set_text(text)
+
+    def clear_log(self):
+        self.log_view.get_buffer().set_text('')
 
     def append_log(self, text):
         buffer = self.log_view.get_buffer()
