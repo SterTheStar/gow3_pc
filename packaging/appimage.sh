@@ -11,14 +11,22 @@ root=$PWD
 # The package version follows the launcher (packaging/default.nix reads GOW3_VERSION).
 export GOW3_VERSION
 GOW3_VERSION=$(python3 -c 'import re; print(re.search(r"^VERSION = .([0-9.]+).", open("launcher/gow3_launcher_win.py").read(), re.M).group(1))')
-# The libraries' store paths (RUNPATH entries and their closures come along).
+# The libraries' store paths (RUNPATH entries and their closures come along). A build
+# outside nix-shell has no /nix RUNPATHs and cannot be bundled: fail loudly, not silently
+# (grep finds nothing and pipefail would otherwise abort without a message).
 {
     echo '['
     for elf in out/gow3-probe out/gpu/libgow3gpu.so; do
         readelf -d "$elf" | sed -n 's/.*\[\(.*\)\]/\1/p' | tr ':' '\n'
-    done | grep -o '^/nix/store/[^/]*' | sort -u | grep -v -- '-nix-shell$' | sed 's/.*/  "&"/'
+    done | grep -o '^/nix/store/[^/]*' | sort -u | grep -v -- '-nix-shell$' | sed 's/.*/  "&"/' || true
     echo ']'
 } > packaging/runtime-paths.nix
+if ! grep -q '/nix/store' packaging/runtime-paths.nix; then
+    echo 'Not a nix-shell build (no /nix/store RUNPATHs): rebuild with' >&2
+    echo '  nix-shell shell.nix --run "bash build.sh"' >&2
+    echo 'before packaging, so the Nix closure can be bundled.' >&2
+    exit 1
+fi
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 (cd "$work" && nix bundle --impure --bundler github:ralismark/nix-appimage \
