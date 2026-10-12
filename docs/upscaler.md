@@ -288,7 +288,7 @@ pass0_post, проходы модели 1..12 (за каждым `_post`, обн
 
     bash tools/fsr4cap/build_assets.sh <amd_fidelityfx_upscaler_dx12.dll 4.1.x> <amd_fidelityfx_loader_dx12.dll 2.3.x>
 
-Нужны nix-shell (или MinGW, cmake, ninja, python3, SPIRV-Tools, umu-run), сеть для dxil-spirv и
+Нужны MinGW, cmake, ninja, python3, SPIRV-Tools, umu-run, сеть для dxil-spirv и
 заголовков FidelityFX SDK и Proton (GE-Proton). DLL есть, например, у OptiScaler
 (`FSR4_LATEST/`) и в играх с FSR 3.1/4. Сборка с нуля даёт те же файлы; `VERIFY=1` в конце
 сравнивает с DLL.

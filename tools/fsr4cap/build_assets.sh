@@ -9,8 +9,8 @@
 #      ratio, recording the D3D12 frames (capture_all.sh);
 #   3. extract.py translates them, checks the replay rules and writes fsr4_411/;
 #   4. with VERIFY=1, verify.sh compares the replay with the DLL byte by byte.
-# Needs nix-shell (or the tools on PATH: x86_64-w64-mingw32-gcc, cmake, ninja, python3,
-# spirv-dis/spirv-as, umu-run), network for the two git repositories, and a Proton build
+# Needs the tools on PATH: x86_64-w64-mingw32-gcc, cmake, ninja, python3,
+# spirv-dis/spirv-as, umu-run, network for the two git repositories, and a Proton build
 # (PROTONPATH, default: newest GE-Proton in Steam's compatibilitytools.d).
 set -euo pipefail
 cd -- "$(dirname -- "$0")/../.."
@@ -19,10 +19,9 @@ loader=$(realpath "${2:?loader DLL}")
 work=$PWD/out/fsr4cap
 mkdir -p "$work"
 
-if [[ -z ${GOW3_FSR4CAP_SHELL:-} ]] && command -v nix-shell >/dev/null; then
-    exec env GOW3_FSR4CAP_SHELL=1 nix-shell -p pkgsCross.mingwW64.buildPackages.gcc cmake ninja gcc \
-        python3 spirv-tools umu-launcher git --run "bash $(printf %q "$0") $(printf %q "$upscaler") $(printf %q "$loader")"
-fi
+for tool in x86_64-w64-mingw32-gcc cmake ninja python3 umu-run; do
+    command -v "$tool" >/dev/null || { echo "Need $tool installed on the system." >&2; exit 1; }
+done
 
 # dxil-spirv: DXIL -> SPIR-V as vkd3d-proton translates it.
 dx=$work/dxil-spirv

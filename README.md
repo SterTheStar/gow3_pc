@@ -117,7 +117,8 @@ Patches and fixes are included and applied automatically: texture fix, skip vide
   bytes. Otherwise the game starts without them, and the log and the menu say why.
 - To build from source: [MSYS2](https://www.msys2.org) and [Python 3](https://www.python.org) with Pillow
   (`pip install pillow`, used for the game's icon and cover art) on Windows; on Linux the
-  packages in [shell.nix](shell.nix) (or Nix, see below).
+  system toolchain (GCC, CMake, Ninja, pkg-config, Python 3 with Pillow, Vulkan loader/headers,
+  SDL3, FFmpeg and the GPU library dependencies, see below).
 
 ## Building from source
 
@@ -160,27 +161,25 @@ python run.py
 
 ### Linux
 
-The same sources build on Linux (x86-64): `bash build.sh` produces `out/gow3-probe` with
-`out/gpu/libgow3gpu.so`, and `bash run.sh` prepares the game image and starts it. The Linux
-launcher (`launcher/gow3_launcher_linux.py`, GTK4/libadwaita) has the same pages as the Windows one;
-`bash packaging/appimage.sh` bundles everything into `dist/gow3-x86_64.AppImage` (Steam Deck).
+The same sources build on Linux (x86-64) with the system compiler: `bash build.sh` produces
+`out/gow3-probe` with `out/gpu/libgow3gpu.so`, and `bash run.sh` prepares the game image and
+starts it. The Linux launcher (`launcher/gow3_launcher_linux.py`, GTK4/libadwaita) has the same
+pages as the Windows one.
 
-1. Easiest: install [Nix](https://nixos.org/download/) and let the scripts enter the pinned
-   environment themselves (`shell.nix`):
+1. Install the system dependencies (GCC, CMake, Ninja, pkg-config, Python 3 with Pillow,
+   Vulkan loader/headers, SDL3, FFmpeg, Boost, fmt, robin-map, xxhash, VulkanMemoryAllocator,
+   glslang, spirv-cross, xbyak, zydis, spirv-headers, miniz, X11/Wayland headers — plus GTK4,
+   libadwaita and PyGObject for the launcher), e.g. on recent Ubuntu/Debian/Arch, then:
 
    ```bash
    git clone --recursive https://github.com/FelipePrado0/gow3_pc
    cd gow3_pc
    git checkout gow3   # the newest work; skip it to build main
-   bash build.sh       # enters nix-shell automatically when needed
+   bash build.sh
    ```
 
-   Without Nix, install the system counterparts of [shell.nix](shell.nix) (GCC, CMake, Ninja,
-   pkg-config, Python 3 with Pillow, Vulkan loader/headers, SDL3, FFmpeg, Boost, fmt,
-   robin-map, xxhash, VulkanMemoryAllocator, glslang, spirv-cross, xbyak, zydis, spirv-headers,
-   miniz, X11/Wayland headers — plus GTK4, libadwaita and PyGObject for the launcher), e.g. on
-   recent Ubuntu/Debian/Arch. SDL3 in particular may be too new for your distribution; when in
-   doubt, use Nix.
+   SDL3 in particular may be too new for your distribution; install it from your
+   distribution's backports or from source when needed.
 
 2. Start the launcher (in the project folder):
 
@@ -188,7 +187,7 @@ launcher (`launcher/gow3_launcher_linux.py`, GTK4/libadwaita) has the same pages
    launcher/gow3-launcher.sh
    ```
 
-   It uses the system Python when PyGObject/GTK4/libadwaita are installed, else nix-shell.
+   It needs the system Python with PyGObject/GTK4/libadwaita installed.
    On **Game**, choose the game folder, adjust the other pages if you like, then press **PLAY**.
 
 To play with the saved settings without the launcher's window (for a shortcut or Steam game
@@ -206,8 +205,8 @@ GOW3_GAME_DIR=/path/CUSA01623 bash run.sh
 
 Settings are kept in `gow3.ini` (the game and the in-game menu) and in the launcher's
 `settings.json` (`%APPDATA%\gow3-launcher` on Windows, `~/.config/gow3-launcher` on Linux).
-Saves, the shader cache and `last_run.log` go to the project's `user` folder — on Linux, or
-`~/.local/share/gow3/user` for the AppImage.
+Saves, the shader cache and `last_run.log` go to the project's `user` folder on Linux
+(or `$GOW3_USER_DIR` / `$GOW3_DATA_DIR/user` for packaged builds).
 
 On **Performance → GPU data → Stream buffer memory**, choose **System RAM (cached, default)**,
 **System RAM (uncached)** or **GPU memory (previous behavior)**. System RAM can improve frame

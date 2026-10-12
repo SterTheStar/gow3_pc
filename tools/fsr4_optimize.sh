@@ -4,7 +4,7 @@
 #   *_post.spv    stores through shared memory, bit-exact, ~3.5x faster (fsr4_post_lds.pl);
 #   *_pass11.spv  no out-of-bounds writes (a data race at the 1080 tier; fsr4_pass11_guard.pl).
 # Each pass is decompiled (spirv-cross), rewritten and compiled again (glslang). Needs
-# spirv-cross and glslangValidator (shell.nix). tools/fsr4_verify.sh checks the results.
+# spirv-cross and glslangValidator installed on the system. tools/fsr4_verify.sh checks the results.
 set -euo pipefail
 cd -- "$(dirname -- "$0")/.."
 src=${GOW3_FSR4_DIR:-fsr4_shaders}

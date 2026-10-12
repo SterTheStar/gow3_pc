@@ -59,8 +59,7 @@ draw перекрыл объект, его вектор не используе�
 Сборка и CPU-тесты:
 
 ```bash
-cd native_probe
-nix-shell shell.nix --run 'bash build.sh && ninja -C out/gpu motion-history-test motion-shader-test && out/gpu/motion-history-test && out/gpu/motion-shader-test out/motion-shaders'
+bash build.sh && ninja -C out/gpu motion-history-test motion-shader-test && out/gpu/motion-history-test && out/gpu/motion-shader-test out/motion-shaders
 ```
 
 `test_motion_history.cpp` проверяет диапазоны u16/u32, restart, отрицательный baseVertex,

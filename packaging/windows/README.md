@@ -6,8 +6,8 @@ on Linux. Players: see `README-Windows.txt` (it ships in the package).
 ## Build
 
 Install [MSYS2](https://www.msys2.org) (`winget install MSYS2.MSYS2`), open the
-**MSYS2 CLANG64** shell and install the toolchain and libraries (the counterpart of
-`shell.nix`):
+**MSYS2 CLANG64** shell and install the toolchain and libraries (the Windows counterpart of
+the Linux system dependencies):
 
 ```bash
 pacman -S --needed git patch \

@@ -23,7 +23,11 @@ MINGW*|MSYS*)
     cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DGOW3_PGO=off \
         -DGOW3_LTO="${GOW3_LTO:-OFF}" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ >/dev/null
     echo "GPU library and loader: LTO ${GOW3_LTO:-OFF}"
-    if ! ninja -C out/gpu gow3-probe gow3-gpu-capabilities gow3-play > out/gpu-build.log 2>&1; then
+    wjobs=()
+    if [[ -n ${GOW3_JOBS:-} ]]; then
+        wjobs=(-j "$GOW3_JOBS")
+    fi
+    if ! ninja -C out/gpu "${wjobs[@]}" gow3-probe gow3-gpu-capabilities gow3-play > out/gpu-build.log 2>&1; then
         grep -v '^\[' out/gpu-build.log | tail -40 >&2
         echo 'Build failed (full log: out/gpu-build.log)' >&2; exit 1
     fi
@@ -34,26 +38,24 @@ MINGW*|MSYS*)
 esac
 if [[ -z ${CC:-} ]]; then
     CC=$(command -v cc || command -v gcc || true)
-    if [[ -z $CC ]]; then
-        for candidate in /nix/store/*-gcc-wrapper-*/bin/gcc; do
-            if [[ -x $candidate ]]; then CC=$candidate; break; fi
-        done
-    fi
 fi
 if [[ -z ${CC:-} ]]; then echo 'Install GCC/Clang or set CC.' >&2; exit 1; fi
-# Dependencies come from pkg-config (Vulkan loader/headers, SDL3). On NixOS the
-# environment is provided by shell.nix; re-enter it automatically if needed.
+# Dependencies come from the system toolchain via pkg-config (Vulkan loader/headers, SDL3).
 if ! { command -v pkg-config >/dev/null && pkg-config --exists vulkan sdl3 && command -v cmake >/dev/null && command -v ninja >/dev/null; }; then
-    if [[ -z ${GOW3_IN_NIX_SHELL:-} ]] && command -v nix-shell >/dev/null; then
-        exec env GOW3_IN_NIX_SHELL=1 nix-shell shell.nix --run "bash build.sh $*"
-    fi
-    echo 'Need pkg-config with vulkan and sdl3, cmake and ninja (see shell.nix).' >&2; exit 1
+    echo 'Need pkg-config with vulkan and sdl3, cmake and ninja installed on the system.' >&2; exit 1
 fi
 read -r -a includes <<< "$(pkg-config --cflags vulkan sdl3 libavcodec libavutil libswscale)"
 read -r -a libraries <<< "$(pkg-config --libs vulkan sdl3 libavcodec libavutil libswscale)"
 # GPU library (shadPS4 video core + drivers), built by CMake into out/gpu/libgow3gpu.so.
 # GOW3_PGO: generate (instrumented build that writes pgo/ while the game runs), use, off.
 # Default: use the profile in pgo/ when there is one. GOW3_LTO=OFF disables link-time optimization.
+# GOW3_JOBS=N limits ninja parallelism (default: all cores). Low-memory machines want
+# GOW3_JOBS=4 (or less) together with GOW3_LTO=OFF: the default LTO link alone needs
+# several GB and each compiler job adds ~0.5-1 GB on top.
+ninja_jobs=()
+if [[ -n ${GOW3_JOBS:-} ]]; then
+    ninja_jobs=(-j "$GOW3_JOBS")
+fi
 pgo=${GOW3_PGO:-}
 if [[ -z $pgo ]]; then
     if [[ -n $(find pgo -name '*.gcda' -print -quit 2>/dev/null) ]]; then pgo=use; else pgo=off; fi
@@ -75,13 +77,24 @@ cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DGOW3_PGO="$
     -DGOW3_LTO="${GOW3_LTO:-ON}" -DGOW3_PGO_DIR="$PWD/pgo" >/dev/null
 echo "GPU library: PGO $pgo, LTO ${GOW3_LTO:-ON}"
 # A failed GPU build must stop here: an older libgow3gpu.so would otherwise be used silently.
-if ! ninja -C out/gpu gow3gpu > out/gpu-build.log 2>&1; then
+if ! ninja -C out/gpu "${ninja_jobs[@]}" gow3gpu > out/gpu-build.log 2>&1; then
     grep -v '^\[' out/gpu-build.log | tail -40 >&2
     echo 'GPU library build failed (full log: out/gpu-build.log)' >&2; exit 1
 fi
 # $ORIGIN/gpu: packaged copies keep the library next to the binary without patching it.
 gpu=(-Lout/gpu -lgow3gpu -Wl,-rpath,'$ORIGIN/gpu' -Wl,-rpath,"$PWD/out/gpu" -rdynamic)
 runtime=(src/runtime*.c)
+# The probe/runtime links below recompile from source on every call; skip them when the last
+# build used the same toolchain and flags and nothing changed since (ninja above already
+# keeps the GPU library itself fresh). A toolchain switch rebuilds once, then stays incremental.
+fingerprint=$(printf '%s|%s|%s|%s' "$CC" "$("$CC" --version | head -n 1)" "$pgo" "${GOW3_LTO:-ON}")
+if [[ ${1:-} != --test && -f out/gow3-probe && -f out/.build-fingerprint && $(cat out/.build-fingerprint) == "$fingerprint" ]] \
+    && [[ ! out/gpu/libgow3gpu.so -nt out/gow3-probe ]] \
+    && [[ ! out/libatrac9.a -nt out/gow3-probe ]] \
+    && [[ -z $(find src tools/gpu_capabilities.c third_party/LibAtrac9/C/src gpu/CMakeLists.txt build.sh -newer out/gow3-probe -print -quit 2>/dev/null) ]]; then
+    echo "gow3-probe is up to date ($PWD/out/gow3-probe)"
+    exit 0
+fi
 # Third-party decoders: compiled once, without this project's -Werror policy.
 atrac9=(third_party/LibAtrac9/C/src/*.c)
 if [[ ! -f out/libatrac9.a || -n $(find third_party/LibAtrac9/C/src -newer out/libatrac9.a -name '*.c') ]]; then
@@ -90,6 +103,7 @@ if [[ ! -f out/libatrac9.a || -n $(find third_party/LibAtrac9/C/src -newer out/l
     ar rcs out/libatrac9.a out/atrac9/*.o
 fi
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -no-pie "${includes[@]}" -I. -Isrc src/probe.c "${runtime[@]}" src/vulkan_smoke.c out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/gow3-probe
+printf '%s\n' "$fingerprint" > out/.build-fingerprint
 echo "Built $PWD/out/gow3-probe"
 # GPU check for run.sh (live_resolution=auto): links only the Vulkan loader.
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror tools/gpu_capabilities.c "${libraries[@]}" -o out/gow3-gpu-capabilities

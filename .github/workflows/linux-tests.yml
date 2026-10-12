@@ -15,7 +15,7 @@ jobs:
           python-version: '3.12'
       - name: Python test suite
         run: python3 -m unittest discover -s tests -p "test_*.py"
-      - name: Shell syntax (run/build/packaging)
-        run: bash -n run.sh build.sh launcher/gow3-launcher.sh packaging/appimage.sh
+      - name: Shell syntax (run/build/launcher)
+        run: bash -n run.sh build.sh launcher/gow3-launcher.sh
       - name: Python syntax (launcher/scripts)
         run: python3 -m py_compile launcher/*.py scripts/*.py

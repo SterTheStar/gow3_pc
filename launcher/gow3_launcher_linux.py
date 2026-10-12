@@ -7,9 +7,9 @@ cheats) and the start-up options passed to run.sh as environment variables
 (frame rate, presentation, HDR, ...), starts and stops the game and shows its
 output. Launcher settings live in ~/.config/gow3-launcher/settings.json.
 
-Run directly with system PyGObject/GTK4/libadwaita installed, else through
-`launcher/gow3-launcher.sh` (nix-shell fallback). `--play` starts the game with the
-saved settings and no window (Steam Deck game mode, AppImage).
+Run through `launcher/gow3-launcher.sh`, which needs the system Python with
+PyGObject/GTK4/libadwaita installed. `--play` starts the game with the
+saved settings and no window (Steam Deck game mode).
 """
 
 import json

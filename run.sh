@@ -11,8 +11,8 @@ if [[ ${1:-} == --software ]]; then
     if [[ -z ${VK_DRIVER_FILES:-} ]]; then echo 'Lavapipe not found; set VK_DRIVER_FILES.' >&2; exit 1; fi
     export VK_LOADER_LAYERS_DISABLE='~implicit~'
 fi
-# GOW3_PREBUILT=1 (packaged builds, the AppImage): out/gow3-probe and its GPU library are installed
-# next to this script; nothing is built and no nix-shell is needed.
+# GOW3_PREBUILT=1 (packaged builds): out/gow3-probe and its GPU library are installed
+# next to this script; nothing is built.
 # GOW3_DATA_DIR: writable directory for the generated files (out/), saves (user/) and gow3.ini;
 # by default this directory.
 data=${GOW3_DATA_DIR:-.}
@@ -23,20 +23,11 @@ export GOW3_CONFIG=${GOW3_CONFIG:-$data/gow3.ini}
 if [[ -z ${GOW3_FSR411_DIR:-} && ! -d fsr4_411 && -d $data/fsr4_411 ]]; then
     export GOW3_FSR411_DIR=$data/fsr4_411
 fi
-if [[ -z ${GOW3_PREBUILT:-} && -z ${GOW3_IN_NIX_SHELL:-} ]] && ! { command -v pkg-config >/dev/null && pkg-config --exists vulkan sdl3; } && command -v nix-shell >/dev/null; then
-    args=''; if (( $# )); then args=$(printf '%q ' "$@"); fi
-    exec env GOW3_IN_NIX_SHELL=1 nix-shell shell.nix --run "bash run.sh $args"
-fi
 if [[ -z ${PYTHON:-} ]]; then
     PYTHON=$(command -v python3 || true)
-    if [[ -z $PYTHON ]]; then
-        for candidate in /nix/store/*-python3-*/bin/python3; do
-            if [[ -x $candidate ]]; then PYTHON=$candidate; break; fi
-        done
-    fi
 fi
 if [[ -z ${PYTHON:-} ]]; then echo 'Install Python 3 or set PYTHON.' >&2; exit 1; fi
-# Vulkan drivers: nix-shell Mesa ICDs plus the host NVIDIA driver when present
+# Vulkan drivers: bundled ICDs plus the host NVIDIA driver when present
 # (gow3_vulkan.py). Only when a bundle exists, so plain system runs keep full enumeration.
 if [[ -n ${GOW3_BUNDLED_VK_DRIVER_FILES:-} || -n ${GOW3_NVIDIA_LIB_DIR:-} ]]; then
     eval "$("$PYTHON" launcher/gow3_vulkan.py --print-env)"

@@ -97,9 +97,9 @@ class PackagedVulkanTests(unittest.TestCase):
         self.assertEqual(self.env["VK_DRIVER_FILES"],
                          "/user/extra.json:/bundled/radeon.json:/bundled/intel.json")
 
-    def test_host_driver_can_be_supplied_outside_hidden_nix_store(self):
+    def test_host_driver_can_be_supplied_outside_bundled_paths(self):
         self.library("libGLX_nvidia.so.0")
-        self.manifest("/nix/store/hidden/lib/libGLX_nvidia.so.0")
+        self.manifest("/hidden/vendor/lib/libGLX_nvidia.so.0")
         self.env["GOW3_NVIDIA_LIB_DIR"] = str(self.libs)
         vulkan.configure(self.env, (self.icds,), ())
         self.assertIn("nvidia_icd.json", self.env["VK_DRIVER_FILES"])

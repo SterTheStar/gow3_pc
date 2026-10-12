@@ -116,8 +116,9 @@ com X e 120 FPS vêm ligados. Mude resolução e FPS na **Home** ou em **Perform
   (trapaças, multiplicadores, barra de vida) só onde o código que eles alteram tem os bytes
   esperados. Fora isso o jogo abre sem eles, e o log e o menu dizem o motivo.
 - Para compilar a partir do código: [MSYS2](https://www.msys2.org) e [Python 3](https://www.python.org) com Pillow
-  (`pip install pillow`, usado no ícone e na capa do jogo) no Windows; no Linux, os pacotes
-  em [shell.nix](shell.nix) (ou Nix, veja abaixo).
+  (`pip install pillow`, usado no ícone e na capa do jogo) no Windows; no Linux, o toolchain do
+  sistema (GCC, CMake, Ninja, pkg-config, Python 3 com Pillow, Vulkan loader/headers, SDL3,
+  FFmpeg e as dependências da GPU, veja abaixo).
 
 ## Compilar a partir do código
 
@@ -161,27 +162,25 @@ python run.py
 
 ### Linux
 
-Os mesmos fontes compilam no Linux (x86-64): `bash build.sh` gera `out/gow3-probe` com
-`out/gpu/libgow3gpu.so`, e `bash run.sh` prepara a imagem do jogo e a inicia. O launcher Linux
-(`launcher/gow3_launcher_linux.py`, GTK4/libadwaita) tem as mesmas telas do Windows;
-`bash packaging/appimage.sh` empacota tudo em `dist/gow3-x86_64.AppImage` (Steam Deck).
+Os mesmos fontes compilam no Linux (x86-64) com o compilador do sistema: `bash build.sh`
+gera `out/gow3-probe` com `out/gpu/libgow3gpu.so`, e `bash run.sh` prepara a imagem do jogo e
+a inicia. O launcher Linux (`launcher/gow3_launcher_linux.py`, GTK4/libadwaita) tem as mesmas
+telas do Windows.
 
-1. Mais fácil: instale o [Nix](https://nixos.org/download/) e deixe os scripts entrarem
-   sozinhos no ambiente fixo (`shell.nix`):
+1. Instale as dependências do sistema (GCC, CMake, Ninja, pkg-config, Python 3 com Pillow,
+   Vulkan loader/headers, SDL3, FFmpeg, Boost, fmt, robin-map, xxhash, VulkanMemoryAllocator,
+   glslang, spirv-cross, xbyak, zydis, spirv-headers, miniz, headers X11/Wayland — mais GTK4,
+   libadwaita e PyGObject para o launcher), por exemplo em Ubuntu/Debian/Arch recentes, e depois:
 
    ```bash
    git clone --recursive https://github.com/FelipePrado0/gow3_pc
    cd gow3_pc
    git checkout gow3   # o trabalho mais recente; pule para compilar a main
-   bash build.sh       # entra no nix-shell sozinho quando preciso
+   bash build.sh
    ```
 
-   Sem Nix, instale os equivalentes no sistema de [shell.nix](shell.nix) (GCC, CMake, Ninja,
-   pkg-config, Python 3 com Pillow, Vulkan loader/headers, SDL3, FFmpeg, Boost, fmt,
-   robin-map, xxhash, VulkanMemoryAllocator, glslang, spirv-cross, xbyak, zydis, spirv-headers,
-   miniz, headers X11/Wayland — mais GTK4, libadwaita e PyGObject para o launcher), por exemplo
-   em Ubuntu/Debian/Arch recentes. O SDL3 em especial pode ser novo demais para a sua
-   distribuição; na dúvida, use o Nix.
+   O SDL3 em especial pode ser novo demais para a sua distribuição; instale pelos backports
+   da distribuição ou a partir do código quando preciso.
 
 2. Abra o launcher (na pasta do projeto):
 
@@ -189,9 +188,8 @@ Os mesmos fontes compilam no Linux (x86-64): `bash build.sh` gera `out/gow3-prob
    launcher/gow3-launcher.sh
    ```
 
-   Ele usa o Python do sistema quando PyGObject/GTK4/libadwaita estão instalados, senão o
-   nix-shell. Em **Game**, escolha a pasta do jogo, ajuste as outras telas se quiser e clique
-   em **PLAY**.
+   Ele precisa do Python do sistema com PyGObject/GTK4/libadwaita instalados. Em **Game**,
+   escolha a pasta do jogo, ajuste as outras telas se quiser e clique em **PLAY**.
 
 Para jogar com as configurações salvas sem a janela do launcher (atalho ou modo jogo da
 Steam):
@@ -208,8 +206,8 @@ GOW3_GAME_DIR=/caminho/CUSA01623 bash run.sh
 
 As configurações ficam em `gow3.ini` (o jogo e o menu do jogo) e no `settings.json` do
 launcher (`%APPDATA%\gow3-launcher` no Windows, `~/.config/gow3-launcher` no Linux). Saves,
-cache de shaders e `last_run.log` ficam na pasta `user` do projeto — no Linux, ou
-`~/.local/share/gow3/user` no AppImage.
+cache de shaders e `last_run.log` ficam na pasta `user` do projeto no Linux
+(ou `$GOW3_USER_DIR` / `$GOW3_DATA_DIR/user` em builds empacotados).
 
 Em **Performance → GPU data → Stream buffer memory**, escolha **System RAM (cached, default)**,
 **System RAM (uncached)** ou **GPU memory (previous behavior)**. A RAM do sistema pode melhorar o
