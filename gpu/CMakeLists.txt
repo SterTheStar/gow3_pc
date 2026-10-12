@@ -183,6 +183,11 @@ if (WIN32)
     target_include_directories(gow3gpu PRIVATE third_party/xbyak)
     target_link_libraries(gow3gpu PUBLIC Vulkan::Vulkan ws2_32 bcrypt ntdll synchronization winmm pdh)
 else()
+    # gow3 (Linux): distros without an xbyak package use the submodule (as on Windows).
+    find_path(XBYAK_INCLUDE_DIR xbyak/xbyak.h)
+    if (NOT XBYAK_INCLUDE_DIR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/xbyak/xbyak/xbyak.h")
+        target_include_directories(gow3gpu PRIVATE third_party/xbyak)
+    endif()
     target_link_libraries(gow3gpu PUBLIC PkgConfig::X11)
 endif()
 

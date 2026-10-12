@@ -109,8 +109,10 @@ Gpu CreateGpu(bool stats) {
     VkPhysicalDeviceCooperativeMatrixFeaturesKHR coopmat{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR};
     // FSR 4.1.1 passes use mixed float dot products (dot2 of halves into float), as vkd3d-proton.
+#ifdef VK_VALVE_SHADER_MIXED_FLOAT_DOT_PRODUCT_EXTENSION_NAME
     VkPhysicalDeviceShaderMixedFloatDotProductFeaturesVALVE mixed_dot{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_MIXED_FLOAT_DOT_PRODUCT_FEATURES_VALVE};
+#endif
     VkPhysicalDeviceVulkan13Features f13{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
     VkPhysicalDeviceVulkan12Features f12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
     VkPhysicalDeviceVulkan11Features f11{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
@@ -120,18 +122,26 @@ Gpu CreateGpu(bool stats) {
     f12.pNext = &f13;
     f13.pNext = &derivatives;
     derivatives.pNext = &coopmat;
+#ifdef VK_VALVE_SHADER_MIXED_FLOAT_DOT_PRODUCT_EXTENSION_NAME
     coopmat.pNext = &mixed_dot;
+#endif
     if (stats) {
+#ifdef VK_VALVE_SHADER_MIXED_FLOAT_DOT_PRODUCT_EXTENSION_NAME
         mixed_dot.pNext = &executable;
+#else
+        coopmat.pNext = &executable;
+#endif
     }
     vkGetPhysicalDeviceFeatures2(gpu.physical, &features);
     features.features.robustBufferAccess = VK_FALSE; // as the game: no robustness cost
     f13.robustImageAccess = VK_FALSE;
     std::vector<const char*> extensions{VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME};
     extensions.push_back(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
+#ifdef VK_VALVE_SHADER_MIXED_FLOAT_DOT_PRODUCT_EXTENSION_NAME
     if (mixed_dot.shaderMixedFloatDotProductFloat16AccFloat32) {
         extensions.push_back(VK_VALVE_SHADER_MIXED_FLOAT_DOT_PRODUCT_EXTENSION_NAME);
     }
+#endif
     if (coopmat.cooperativeMatrix) {
         extensions.push_back(VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME);
     }

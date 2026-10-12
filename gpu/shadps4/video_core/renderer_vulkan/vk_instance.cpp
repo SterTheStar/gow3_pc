@@ -218,7 +218,7 @@ bool PipelineBinaryCacheRequested() {
 
 bool InitializePipelineBinaryCache(vk::Device device, bool supported,
                                    vk::PipelineBinaryKeyKHR& global_key) {
-    global_key = {};
+    global_key = vk::PipelineBinaryKeyKHR{};
     if (!PipelineBinaryCacheRequested()) {
         LOG_INFO(Render_Vulkan, "Pipeline binary cache disabled by settings; using normal compilation");
         return false;
@@ -238,7 +238,7 @@ bool InitializePipelineBinaryCache(vk::Device device, bool supported,
     if (result != vk::Result::eSuccess || !global_key.keySize ||
         global_key.keySize > VK_MAX_PIPELINE_BINARY_KEY_SIZE_KHR) {
         const auto key_size = global_key.keySize;
-        global_key = {};
+        global_key = vk::PipelineBinaryKeyKHR{};
         LOG_WARNING(Render_Vulkan,
                     "Pipeline binary cache key unavailable (result {}, size {}); using normal compilation",
                     vk::to_string(result), key_size);
@@ -259,7 +259,9 @@ bool Instance::CreateDevice() {
         vk::PhysicalDeviceWorkgroupMemoryExplicitLayoutFeaturesKHR,
         vk::PhysicalDeviceImage2DViewOf3DFeaturesEXT, vk::PhysicalDeviceShaderClockFeaturesKHR,
         vk::PhysicalDeviceComputeShaderDerivativesFeaturesKHR,
+#ifdef VK_VALVE_SHADER_MIXED_FLOAT_DOT_PRODUCT_EXTENSION_NAME
         vk::PhysicalDeviceShaderMixedFloatDotProductFeaturesVALVE,
+#endif
         vk::PhysicalDevicePipelineBinaryFeaturesKHR,
         vk::PhysicalDeviceMaintenance5FeaturesKHR>();
     features = feature_chain.get().features;
@@ -402,10 +404,16 @@ bool Instance::CreateDevice() {
     // gow3: FSR 4 v07 INT8 (vk_temporal_upscaler): quad derivatives in compute shaders.
     compute_shader_derivatives = add_extension(VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME);
     // gow3: FSR 4.1.1 passes (dot2 of halves accumulated in float, as vkd3d-proton translates them).
+#ifdef VK_VALVE_SHADER_MIXED_FLOAT_DOT_PRODUCT_EXTENSION_NAME
     mixed_float_dot_product =
         feature_chain.get<vk::PhysicalDeviceShaderMixedFloatDotProductFeaturesVALVE>()
             .shaderMixedFloatDotProductFloat16AccFloat32 &&
         add_extension(VK_VALVE_SHADER_MIXED_FLOAT_DOT_PRODUCT_EXTENSION_NAME);
+#else
+    // Newer Vulkan headers dropped the provisional VALVE extension: the feature stays off and
+    // IsFsr411Supported() is false (the game falls back to FSR 3.1 by itself).
+    mixed_float_dot_product = false;
+#endif
     if (compute_shader_derivatives) {
         compute_shader_derivatives_features =
             feature_chain.get<vk::PhysicalDeviceComputeShaderDerivativesFeaturesKHR>();
@@ -614,9 +622,11 @@ bool Instance::CreateDevice() {
             .computeDerivativeGroupLinear =
                 compute_shader_derivatives_features.computeDerivativeGroupLinear,
         },
+#ifdef VK_VALVE_SHADER_MIXED_FLOAT_DOT_PRODUCT_EXTENSION_NAME
         vk::PhysicalDeviceShaderMixedFloatDotProductFeaturesVALVE{
             .shaderMixedFloatDotProductFloat16AccFloat32 = true,
         },
+#endif
     };
 
     if (!custom_border_color) {
@@ -674,9 +684,11 @@ bool Instance::CreateDevice() {
     if (!compute_shader_derivatives) {
         device_chain.unlink<vk::PhysicalDeviceComputeShaderDerivativesFeaturesKHR>();
     }
+#ifdef VK_VALVE_SHADER_MIXED_FLOAT_DOT_PRODUCT_EXTENSION_NAME
     if (!mixed_float_dot_product) {
         device_chain.unlink<vk::PhysicalDeviceShaderMixedFloatDotProductFeaturesVALVE>();
     }
+#endif
 
     auto [device_result, dev] = physical_device.createDeviceUnique(device_chain.get());
     if (device_result != vk::Result::eSuccess) {
