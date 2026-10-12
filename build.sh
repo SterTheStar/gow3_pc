@@ -60,8 +60,10 @@ if [[ -z $pgo ]]; then
 fi
 mkdir -p pgo
 # Submodules (git clone --recursive, or: git submodule update --init) and this port's changes
-# to FSR-Vulkan (gpu/patches/fsr-vulkan), applied to its working tree once.
-if [[ ! -f gpu/third_party/fsr-vulkan/CMakeLists.txt || ! -f gpu/third_party/imgui/imgui.h ]]; then
+# to FSR-Vulkan (gpu/patches/fsr-vulkan), applied to its working tree once. The submodule
+# stays marked as modified afterwards by design (same on Windows): do not commit that state,
+# it is derived from gpu/patches at build time.
+if [[ ! -f gpu/third_party/fsr-vulkan/CMakeLists.txt || ! -f gpu/third_party/imgui/imgui.h || ! -f gpu/third_party/xbyak/xbyak/xbyak.h ]]; then
     git submodule update --init --recursive
 fi
 for patch in gpu/patches/fsr-vulkan/*.patch; do
