@@ -10,6 +10,7 @@ whole library directory (which would also replace the package's libc/GTK/SDL).
 import hashlib
 import json
 import os
+import shlex
 from pathlib import Path
 import sys
 
@@ -118,6 +119,12 @@ def main():
         # falling through to an unrelated Vulkan assertion.
         print(f"gow3: cannot prepare NVIDIA driver: {error}", file=sys.stderr)
         return 1
+    if sys.argv[1] == "--print-env":
+        # For run.sh (`eval "$(... --print-env)"`): emit only what configure() set.
+        for key in ("VK_DRIVER_FILES", "LD_LIBRARY_PATH"):
+            if os.environ.get(key):
+                print(f"export {key}={shlex.quote(os.environ[key])}")
+        return 0
     if "--vulkan-info" in sys.argv[1:]:
         tool = os.environ.get("GOW3_VULKANINFO", "vulkaninfo")
         os.environ.setdefault("VK_LOADER_DEBUG", "error,warn,driver")

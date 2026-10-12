@@ -8,6 +8,9 @@ set -euo pipefail
 cd -- "$(dirname -- "$0")/.."
 [[ -f out/gow3-probe && -f out/gpu/libgow3gpu.so ]] || { echo 'Build first: bash build.sh' >&2; exit 1; }
 root=$PWD
+# The package version follows the launcher (packaging/default.nix reads GOW3_VERSION).
+export GOW3_VERSION
+GOW3_VERSION=$(python3 -c 'import re; print(re.search(r"^VERSION = .([0-9.]+).", open("launcher/gow3_launcher_win.py").read(), re.M).group(1))')
 # The libraries' store paths (RUNPATH entries and their closures come along).
 {
     echo '['
@@ -22,4 +25,11 @@ trap 'rm -rf "$work"' EXIT
     --expr "import $root/packaging {}")
 mkdir -p dist
 install -m755 "$work/gow3.AppImage" dist/gow3-x86_64.AppImage
+# Light packaging check: the AppImage embeds the launcher and desktop entry.
+if (cd "$work" && "$work/gow3.AppImage" --appimage-extract launcher/gow3_launcher_linux.py \
+    launcher/io.github.gow3pc.Launcher.desktop >/dev/null 2>&1); then
+    rm -rf "$work/squashfs-root"
+else
+    echo 'warning: could not verify AppImage contents (needs user namespaces)' >&2
+fi
 ls -lh dist/gow3-x86_64.AppImage

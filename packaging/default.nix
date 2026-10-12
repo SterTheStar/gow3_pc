@@ -5,6 +5,9 @@
   # Store paths the prebuilt binaries load libraries from (their RUNPATHs), written by
   # appimage.sh. Nix only finds references to its inputs, and the binaries were built outside.
 , runtimePaths ? (if builtins.pathExists ./runtime-paths.nix then import ./runtime-paths.nix else [ ])
+  # Release version (appimage.sh exports GOW3_VERSION from the launcher); "0.1" only when
+  # built by hand without it.
+, version ? builtins.getEnv "GOW3_VERSION"
 }:
 let
   lib = pkgs.lib;
@@ -59,7 +62,7 @@ let
 in
 pkgs.stdenv.mkDerivation {
   pname = "gow3";
-  version = "0.1";
+  version = if version == "" then "0.1" else version;
   inherit src;
   nativeBuildInputs = [ pkgs.makeShellWrapper pkgs.wrapGAppsHook4 pkgs.gobject-introspection ];
   buildInputs = [ pkgs.gtk4 pkgs.libadwaita pkgs.adwaita-icon-theme pkgs.librsvg ]

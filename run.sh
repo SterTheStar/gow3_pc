@@ -36,6 +36,11 @@ if [[ -z ${PYTHON:-} ]]; then
     fi
 fi
 if [[ -z ${PYTHON:-} ]]; then echo 'Install Python 3 or set PYTHON.' >&2; exit 1; fi
+# Vulkan drivers: nix-shell Mesa ICDs plus the host NVIDIA driver when present
+# (gow3_vulkan.py). Only when a bundle exists, so plain system runs keep full enumeration.
+if [[ -n ${GOW3_BUNDLED_VK_DRIVER_FILES:-} || -n ${GOW3_NVIDIA_LIB_DIR:-} ]]; then
+    eval "$("$PYTHON" launcher/gow3_vulkan.py --print-env)"
+fi
 # GOW3_GAME_DIR: the game's folder (eboot.bin, sce_module, ...); default next to this directory.
 game=${GOW3_GAME_DIR:-../CUSA01623}
 if [[ ! -f $game/eboot.bin ]]; then echo "No eboot.bin in $game (set GOW3_GAME_DIR)." >&2; exit 1; fi
