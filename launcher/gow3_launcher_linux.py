@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """God of War III (gow3) launcher for Linux (GTK4 / libadwaita).
 
-The counterpart of launcher/gow3_launcher_win.py: picks the game folder, edits gow3.ini
-(upscaler, output, effects) and the start-up options passed to run.sh as environment
-variables (frame rate, presentation, HDR, ...), starts and stops the game and shows its
-output. Launcher settings live in ~/.config/gow3-launcher/settings.json.
+Picks the game folder, edits gow3.ini (upscaler, output, effects) and the
+start-up options passed to run.sh as environment variables (frame rate,
+presentation, HDR, ...), starts and stops the game and shows its output.
+Launcher settings live in ~/.config/gow3-launcher/settings.json.
 
 Run directly with system PyGObject/GTK4/libadwaita installed, else through
 `launcher/gow3-launcher.sh` (nix-shell fallback). `--play` starts the game with the
@@ -17,6 +17,7 @@ import os
 import re
 import signal
 import sys
+import threading
 from pathlib import Path
 
 import gow3_config as cfg
@@ -75,7 +76,10 @@ def combo_row(title, subtitle, choices, current):
 
 
 def combo_value(row):
-    return row.values[row.get_selected()]
+    selected = row.get_selected()
+    if 0 <= selected < len(row.values):
+        return row.values[selected]
+    return row.values[0] if row.values else ''
 
 
 class FolderList:
@@ -114,7 +118,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.build()
         self.connect('close-request', self.on_close)
         if self.settings.get('check_updates', True):
-            Gio.Task.run_in_thread(lambda *_: self.check_update())
+            threading.Thread(target=self.check_update, daemon=True).start()
 
     # ---- layout ---------------------------------------------------------------------
 
@@ -141,8 +145,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.toasts.set_vexpand(True)
         toolbar.set_content(self.toasts)
 
-        # Side tabs, like the Windows launcher: an overlay split view with a navigation
-        # sidebar on the left, collapsible through the header toggle.
+        # Side tabs: an overlay split view with a navigation sidebar on the left,
+        # collapsible through the header toggle.
         sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         sidebar.set_size_request(230, -1)
         scroller = Gtk.ScrolledWindow(vexpand=True, propagate_natural_height=True)
@@ -752,7 +756,12 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.refresh_mods()
 
         presets = Adw.PreferencesGroup(title=_('Preset'))
-        self.preset_row = Adw.ComboRow(title=_('Preset'))
+        # The name field also accepts a new preset name; the drop-down lists the
+        # saved ones. ComboRow itself is not editable, so typing goes in the EntryRow.
+        self.preset_entry = Adw.EntryRow(title=_('Preset name'))
+        presets.add(self.preset_entry)
+        self.preset_row = Adw.ComboRow(title=_('Saved presets'))
+        self.preset_row.connect('notify::selected', self.on_preset_selected)
         presets.add(self.preset_row)
         buttons = Adw.ActionRow()
         buttons.add_suffix(flat_button('document-open-symbolic', _('Load'), lambda _b: self.load_mod_preset()))
@@ -840,27 +849,46 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.preset_row.set_model(Gtk.StringList.new(names))
         if keep in names:
             self.preset_row.set_selected(names.index(keep))
+            self.preset_entry.set_text(keep)
+        elif names:
+            if not 0 <= self.preset_row.get_selected() < len(names):
+                self.preset_row.set_selected(0)
         self.preset_row.set_sensitive(bool(names))
 
+    def on_preset_selected(self, row, _param):
+        item = row.get_selected_item()
+        if item is not None and self.preset_entry.get_text().strip() != item.get_string():
+            self.preset_entry.set_text(item.get_string())
+
+    def preset_name(self):
+        """Editable-combobox behavior: typed name wins, else the selected saved preset."""
+        name = self.preset_entry.get_text().strip()
+        if name:
+            return name
+        item = self.preset_row.get_selected_item()
+        return item.get_string().strip() if item is not None else ''
+
     def save_mod_preset(self):
-        name = self.preset_row.get_selected_item()
-        name = name.get_string().strip() if name else ''
+        name = self.preset_name()
         if not name:
             self.toast(_('Type a name for the preset first.'))
             return
         presets = self.load_presets()
         presets[name] = {'order': [n for n, _ in self.mod_list.rows],
                          'disabled': [n for n, row in self.mod_list.rows if not row.get_active()]}
+        cfg.MOD_PRESETS.parent.mkdir(parents=True, exist_ok=True)
         cfg.MOD_PRESETS.write_text(json.dumps(presets, indent=2), encoding='utf-8')
         self.refresh_presets(name)
+        self.toast(_('Preset "{}" saved.').format(name))
 
     def load_mod_preset(self):
-        index = self.preset_row.get_selected()
-        if not self.preset_names or not 0 <= index < len(self.preset_names):
+        name = self.preset_name()
+        if not name:
+            self.toast(_('Type a name for the preset first.'))
             return
-        name = self.preset_names[index]
         preset = self.load_presets().get(name)
         if not isinstance(preset, dict):
+            self.toast(_('Preset "{}" not found.').format(name))
             return
         order, disabled = apply_preset(preset, [n for n, _ in self.mod_list.rows])
         self.mod_order = order
@@ -875,13 +903,15 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.refresh_presets(name)
 
     def delete_mod_preset(self):
-        index = self.preset_row.get_selected()
-        if not self.preset_names or not 0 <= index < len(self.preset_names):
+        name = self.preset_name()
+        if not name:
             return
-        name = self.preset_names[index]
         presets = self.load_presets()
         if presets.pop(name, None) is not None:
+            cfg.MOD_PRESETS.parent.mkdir(parents=True, exist_ok=True)
             cfg.MOD_PRESETS.write_text(json.dumps(presets, indent=2), encoding='utf-8')
+            self.toast(_('Preset "{}" deleted.').format(name))
+        self.preset_entry.set_text('')
         self.refresh_presets()
 
     # ---- controls -------------------------------------------------------------------------
@@ -978,7 +1008,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         launcher.add(self.check_updates_row)
         update = Adw.ActionRow(title=_('Version {}').format(cfg.VERSION))
         update.add_suffix(flat_button('view-refresh-symbolic', _('Check for updates'),
-                                      lambda _b: Gio.Task.run_in_thread(lambda *_: self.check_update(manual=True))))
+                                      lambda _b: threading.Thread(
+                                          target=self.check_update, args=(True,), daemon=True).start()))
         launcher.add(update)
         shortcut = Adw.ActionRow(title=_('Desktop shortcut'))
         shortcut.add_suffix(flat_button('document-new-symbolic', _('Create the desktop shortcut'),
@@ -1102,30 +1133,53 @@ class LauncherWindow(Adw.ApplicationWindow):
     # ---- log page ----------------------------------------------------------------------------
 
     def build_log_page(self):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6,
-                      margin_top=8, margin_start=8, margin_end=8)
-        spacer = Gtk.Box(hexpand=True)
-        bar.append(spacer)
-        bar.append(flat_button('edit-copy-symbolic', _('Copy'), lambda _b: self.copy_log()))
-        bar.append(flat_button('edit-clear-symbolic', _('Clear'), lambda _b: self.clear_log()))
-        box.append(bar)
         self.log_view = Gtk.TextView(editable=False, monospace=True, cursor_visible=False,
                                      wrap_mode=Gtk.WrapMode.WORD_CHAR)
         self.log_view.set_top_margin(8)
         self.log_view.set_left_margin(8)
         self.log_view.set_right_margin(8)
+        self.log_view.set_bottom_margin(64)
+        self.log_view.set_hexpand(True)
+        self.log_view.set_vexpand(True)
         scroller = Gtk.ScrolledWindow(vexpand=True, hexpand=True, child=self.log_view)
         self.log_scroller = scroller
-        box.append(scroller)
-        return box
+
+        overlay = Gtk.Overlay(hexpand=True, vexpand=True)
+        overlay.set_child(scroller)
+
+        fab_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6,
+                          halign=Gtk.Align.END, valign=Gtk.Align.END,
+                          margin_top=12, margin_bottom=16, margin_start=12, margin_end=16)
+        for icon, tooltip, handler in (
+                ('edit-copy-symbolic', _('Copy'), lambda _b: self.copy_log()),
+                ('edit-clear-symbolic', _('Clear'), lambda _b: self.clear_log())):
+            button = flat_button(icon, tooltip, handler)
+            button.add_css_class('circular')
+            button.add_css_class('osd')
+            fab_box.append(button)
+        overlay.add_overlay(fab_box)
+        return overlay
 
     def copy_log(self):
         buffer = self.log_view.get_buffer()
         text = buffer.get_text(*buffer.get_bounds(), False)
-        display = Gdk.Display.get_default()
-        if display is not None:
-            display.get_clipboard().set_text(text)
+        if not text:
+            return
+        try:
+            # GTK 4.22 (Gdk.Clipboard has set(), not set_text()).
+            self.log_view.get_clipboard().set(text)
+        except Exception:
+            try:
+                display = Gdk.Display.get_default()
+                if display is not None:
+                    display.get_clipboard().set_content(
+                        Gdk.ContentProvider.new_for_value(text))
+                else:
+                    raise RuntimeError('no display')
+            except Exception as error:
+                self.toast(_('Could not copy: {}').format(error))
+                return
+        self.toast(_('Log copied.'))
 
     def clear_log(self):
         self.log_view.get_buffer().set_text('')
@@ -1168,7 +1222,7 @@ class LauncherWindow(Adw.ApplicationWindow):
                     if self.key_rows[b].get_text().strip()},
             'pad': {b: self.pad_sdl_name(b) for b in self.pad_rows},
         }
-        # Keep only real changes (same rule as the Windows launcher).
+        # Keep only settings that differ from the defaults.
         s['controls'] = {kind: cfg.core.control_changes(
             {b: (s['controls'][kind].get(b) or d or '') for b, k, p in cfg.CONTROLS
              for d in [(k if kind == 'key' else p)]}, kind) for kind in ('key', 'pad')}
