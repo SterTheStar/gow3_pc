@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """God of War III (gow3) launcher for Linux (GTK4 / libadwaita).
 
-Picks the game folder, edits gow3.ini (upscaler, output, effects) and the
-start-up options passed to run.sh as environment variables (frame rate,
-presentation, HDR, ...), starts and stops the game and shows its output.
-Launcher settings live in ~/.config/gow3-launcher/settings.json.
+Picks the game folder, edits gow3.ini (display, frame rate, scaling, GPU behavior,
+cheats) and the start-up options passed to run.sh as environment variables
+(frame rate, presentation, HDR, ...), starts and stops the game and shows its
+output. Launcher settings live in ~/.config/gow3-launcher/settings.json.
 
 Run directly with system PyGObject/GTK4/libadwaita installed, else through
 `launcher/gow3-launcher.sh` (nix-shell fallback). `--play` starts the game with the
@@ -117,7 +117,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.game_statuses = []
         self.build()
         self.connect('close-request', self.on_close)
-        if self.settings.get('check_updates', True):
+        # No self-update channel in packaged builds (AppImage): only explicit checks.
+        if not cfg.PACKAGED and self.settings.get('check_updates', False):
             threading.Thread(target=self.check_update, daemon=True).start()
 
     # ---- layout ---------------------------------------------------------------------

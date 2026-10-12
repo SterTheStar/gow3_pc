@@ -7,4 +7,4 @@ here=$(cd -- "$(dirname -- "$0")" && pwd)
 if python3 -c 'import gi; gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1")' 2>/dev/null; then
     exec python3 "$here/gow3_launcher_linux.py" "$@"
 fi
-exec nix-shell "$here/../shell.nix" --run "python3 '$here/gow3_launcher_linux.py' $*"
+exec nix-shell "$here/../shell.nix" --run "$(printf 'python3 %q ' "$here/gow3_launcher_linux.py" "$@")"
