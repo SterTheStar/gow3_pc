@@ -1,0 +1,21 @@
+name: Linux tests
+on:
+  push:
+    branches: [linux-support, main, gow3]
+  pull_request:
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Python test suite
+        run: python3 -m unittest discover -s tests -p "test_*.py"
+      - name: Shell syntax (run/build/packaging)
+        run: bash -n run.sh build.sh launcher/gow3-launcher.sh packaging/appimage.sh
+      - name: Python syntax (launcher/scripts)
+        run: python3 -m py_compile launcher/*.py scripts/*.py
